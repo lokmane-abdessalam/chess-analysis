@@ -190,19 +190,53 @@ function createAnalyzeButton() {
 }
 
 function injectButton() {
-  if (document.getElementById('wintrchess-analyze-btn')) return;
+  if (!isSupportedGamePage()) {
+    document.getElementById('wintrchess-analyze-btn')?.remove();
+    return;
+  }
+
+  const existingButton = document.getElementById('wintrchess-analyze-btn');
+  if (existingButton?.isConnected) return;
 
   const targetContainer = 
     document.querySelector('.sidebar-content') ||
     document.querySelector('.game-tab-scrollable') ||
     document.querySelector('#live-game-tab-scroll-container') ||
-    document.querySelector('.board-layout-sidebar');
+    document.querySelector('#board-layout-sidebar');
 
   if (targetContainer) {
     targetContainer.prepend(createAnalyzeButton());
   }
 }
 
-const observer = new MutationObserver(() => injectButton());
-observer.observe(document.body, { childList: true, subtree: true });
-injectButton();
+function isSupportedGamePage() {
+  return /^\/(?:game\/|analysis\/game\/)/.test(window.location.pathname);
+}
+
+// Chess.com builds the game sidebar asynchronously and may replace it during
+// client-side navigation. This script also loads on /home, so watch for URL
+// changes that happen through Chess.com's SPA router (which do not reload the
+// document and do not necessarily emit popstate).
+function startButtonInjection() {
+  const root = document.documentElement;
+  if (!root) {
+    document.addEventListener('DOMContentLoaded', startButtonInjection, { once: true });
+    return;
+  }
+
+  const observer = new MutationObserver(() => injectButton());
+  observer.observe(root, { childList: true, subtree: true });
+  injectButton();
+
+  // History API navigation does not reliably emit an event, so check the URL
+  // periodically as a fallback. The observer handles sidebar mount/replacement.
+  let previousUrl = window.location.href;
+  window.setInterval(() => {
+    if (window.location.href !== previousUrl) {
+      previousUrl = window.location.href;
+      injectButton();
+    }
+  }, 500);
+}
+
+startButtonInjection();
